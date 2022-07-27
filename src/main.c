@@ -6,27 +6,10 @@
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
+#include "defines.h"
 #include "player/player.h"
 #include "world/wall.h"
 #include "world/sector.h"
-
-#define WINDOW_WIDTH      160                       // Raw screen height
-#define WINDOW_HEIGHT     120                       // Raw screen width
-#define RESOLUTION        1                         // 0=160x120 1=360x240 4=640x480
-#define SW                WINDOW_WIDTH*RESOLUTION   // screen width
-#define SH                WINDOW_HEIGHT*RESOLUTION  // screen height
-#define SW2               (SW/2)                    // half of screen width
-#define SH2               (SH/2)                    // half of screen height
-#define PIXEL_SCALE       4/RESOLUTION              // OpenGL pixel scale
-#define GLSW              (SW*PIXEL_SCALE)          // OpenGL window width
-#define GLSH              (SH*PIXEL_SCALE)          // OpenGL window height
-#define Z_NEAR            0                         // Near clipping plane distance
-#define Z_FAR             1000                      // Far clipping plane distance
-#define BACKGROUND_COLOUR 0.07f, 0.13f, 0.17f, 1.0f // Clear colour
-#define SECTOR_COUNT 4
-#define WALL_COUNT 16
-
-#define RAW_MOUSE_INPUT
 
 typedef struct Keys {
     int w, a, s, d;
@@ -199,7 +182,7 @@ void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
     *z1 = *z1 + s * (z2 - (*z1));
 }
 
-void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2, int colour) {
+void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2, int colour, int sector) {
     int dyb = bottom2 - bottom1; // Y distance bottom
     int dyt = top2 - top1; // Y distance top
     int dx = x2 - x1; // X distance
@@ -240,6 +223,26 @@ void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2, int 
             y2 = SH - CLIP_BOUND; // Top
         }
 
+        // Surface
+        if (sectors[sector].surface == 1) {
+            sectors[sector].surfacePoints[x] = y1;
+            continue;
+        }
+        if (sectors[sector].surface == 2) {
+            sectors[sector].surfacePoints[x] = y2;
+            continue;
+        }
+        if (sectors[sector].surface == -1) {
+            for (int y = sectors[sector].surfacePoints[x]; y < y1; y++) {
+                pixel(x, y, sectors[sector].colours.bottom);
+            }
+        }
+        if (sectors[sector].surface == -2) {
+            for (int y = y2; y < sectors[sector].surfacePoints[x]; y++) {
+                pixel(x, y, sectors[sector].colours.top);
+            }
+        }
+
         for (int y = y1; y < y2; y++) {
             pixel(x, y, colour);
         }
@@ -269,7 +272,15 @@ void draw() {
 
     for (int sector = 0; sector < SECTOR_COUNT; sector++) {
         sectors[sector].dist = 0;
-        for (int loop = 0; loop < 2; loop++) {
+        if (player.pos.z < sectors[sector].heightBounds.z1) {
+            sectors[sector].surface = 1; // Bottom
+        } else if (player.pos.x > sectors[sector].heightBounds.z2) {
+            sectors[sector].surface = 2; // Top
+        } else {
+            sectors[sector].surface = 0; // None
+        }
+
+        for (int face = 0; face < 2; face++) {
             for (int wall = sectors[sector].walls.start; wall < sectors[sector].walls.end; wall++) {
                 int x1 = walls[wall].pos1.x - player.pos.x;
                 int y1 = walls[wall].pos1.y - player.pos.y;
@@ -277,7 +288,7 @@ void draw() {
                 int y2 = walls[wall].pos2.y - player.pos.y;
 
                 // Swap surface ordering, draw back first then front
-                if (loop == 0) {
+                if (face == 0) {
                     int swp = x1;
                     x1 = x2;
                     x2 = swp;
@@ -345,11 +356,13 @@ void draw() {
                 wallY[2] = wallZ[2] * FOV / wallY[2] + SH2;
                 wallX[3] = wallX[3] * FOV / wallY[3] + SW2;
                 wallY[3] = wallZ[3] * FOV / wallY[3] + SH2;
-                drawWall(wallX[0], wallX[1], wallY[0], wallY[1], wallY[2], wallY[3], walls[wall].colour);
+                drawWall(wallX[0], wallX[1], wallY[0], wallY[1], wallY[2], wallY[3], walls[wall].colour, sector);
             }
+            // Average sector distance
+            sectors[sector].dist /= (sectors[sector].walls.end - sectors[sector].walls.start);
+            // Flip to draw next surface
+            sectors[sector].surface *= -1;
         }
-        // Average sector distance
-        sectors[sector].dist /= (sectors[sector].walls.end - sectors[sector].walls.start);
     }
 }
 
@@ -378,11 +391,11 @@ void display(GLFWwindow* window) {
 }
 
 int loadSectors[] = {
-    // Wall start, wall end, z1 height, z2 height
-    0, 4, 0, 40,
-    4, 8, 0, 40,
-    8, 12, 0, 40,
-    12, 16, 0, 40
+    // Wall start, wall end, z1 height, z2 height, bottom colour, top colour
+    0, 4, 0, 40, 2, 3,
+    4, 8, 0, 40, 4, 5,
+    8, 12, 0, 40, 6, 7,
+    12, 16, 0, 40, 0, 1
 };
 
 int loadWalls[] = {
@@ -430,7 +443,9 @@ void init() {
         sectors[sector].walls.end = loadSectors[v1 + 1];
         sectors[sector].heightBounds.z1 = loadSectors[v1 + 2];
         sectors[sector].heightBounds.z2 = loadSectors[v1 + 3] - loadSectors[v1 + 2];
-        v1 += 4;
+        sectors[sector].colours.top = loadSectors[v1 + 4];
+        sectors[sector].colours.bottom = loadSectors[v1 + 5];
+        v1 += 6;
         for (int wall = sectors[sector].walls.start; wall < sectors[sector].walls.end; wall++) {
             walls[wall].pos1.x = loadWalls[v2 + 0];
             walls[wall].pos1.y = loadWalls[v2 + 1];

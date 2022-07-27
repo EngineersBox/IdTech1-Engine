@@ -7,6 +7,8 @@
 extern "C" {
 #endif
 
+#include "../defines.h"
+
 typedef struct Sector {
     struct {
         int start;
@@ -20,6 +22,12 @@ typedef struct Sector {
         int x;
         int y;
     } centre;
+    struct {
+        int bottom;
+        int top;
+    } colours;
+    int surfacePoints[SW];
+    int surface;
     int dist;
 } Sector;
 
