@@ -87,15 +87,17 @@ void clearBackground() {
 
 void pixel(int x, int y, int c) {
     int rgb[3];
-    if(c==0){ rgb[0]=255; rgb[1]=255; rgb[2]=  0;} //Yellow
-    if(c==1){ rgb[0]=160; rgb[1]=160; rgb[2]=  0;} //Yellow darker
-    if(c==2){ rgb[0]=  0; rgb[1]=255; rgb[2]=  0;} //Green
-    if(c==3){ rgb[0]=  0; rgb[1]=160; rgb[2]=  0;} //Green darker
-    if(c==4){ rgb[0]=  0; rgb[1]=255; rgb[2]=255;} //Cyan
-    if(c==5){ rgb[0]=  0; rgb[1]=160; rgb[2]=160;} //Cyan darker
-    if(c==6){ rgb[0]=160; rgb[1]=100; rgb[2]=  0;} //brown
-    if(c==7){ rgb[0]=110; rgb[1]= 50; rgb[2]=  0;} //brown darker
-    if(c==8){ rgb[0]=  0; rgb[1]= 60; rgb[2]=130;} //background
+#define MAP_COLOUR(index, r, g, b) if (c == (index)) { rgb[0] = r; rgb[1] = g; rgb[2] = b; }
+    MAP_COLOUR(0, 255, 255, 0) //Yellow
+    MAP_COLOUR(1, 160, 160, 0) //Yellow darker
+    MAP_COLOUR(2, 0, 255, 0) //Green
+    MAP_COLOUR(3, 0, 160, 0) //Green darker
+    MAP_COLOUR(4, 0, 255, 255) //Cyan
+    MAP_COLOUR(5, 0, 160, 160) //Cyan darker
+    MAP_COLOUR(6, 160, 100, 0) //brown
+    MAP_COLOUR(7, 110, 50, 0) //brown darker
+    MAP_COLOUR(8, 0, 60, 130) //background
+
     glColor3ub(rgb[0],rgb[1],rgb[2]);
     glBegin(GL_POINTS);
     glVertex2i(x * PIXEL_SCALE + 2, y * PIXEL_SCALE + 2);
@@ -162,8 +164,6 @@ void movePlayer() {
 Wall walls[30];
 Sector sectors[30];
 
-#define FOV 200
-#define LOOK_SCALE 32.0
 #define CLIP_BOUND 1
 
 void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
@@ -191,48 +191,38 @@ void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2, int 
     }
     int xs = x1;
 
-    // Clip x
-    if (x1 < CLIP_BOUND) {
-        x1 = CLIP_BOUND; // Left
+#define CLIP(var, upper) \
+    if (var##1 < CLIP_BOUND) { \
+        var##1 = CLIP_BOUND; \
+    } \
+    if (var##2 < CLIP_BOUND) { \
+        var##2 = CLIP_BOUND; \
+    } \
+    if (var##1 > (upper) - CLIP_BOUND) { \
+        var##1 = (upper) - CLIP_BOUND; \
+    } \
+    if (var##2 > (upper) - CLIP_BOUND) { \
+        var##2 = (upper) - CLIP_BOUND; \
     }
-    if (x2 < CLIP_BOUND) {
-        x2 = CLIP_BOUND; // Left
-    }
-    if (x1 > SW - CLIP_BOUND) {
-        x1 = SW - CLIP_BOUND; // Right
-    }
-    if (x2 > SW - CLIP_BOUND) {
-        x2 = SW - CLIP_BOUND; // Right
-    }
+
+    // Clip X
+    CLIP(x, SW)
 
     for (int x = x1; x < x2; x++) {
         int y1 = dyb * (x - xs + 0.5) / dx + bottom1;
         int y2 = dyt * (x - xs + 0.5) / dx + top1;
 
         // Clip y
-        if (y1 < CLIP_BOUND) {
-            y1 = CLIP_BOUND; // Bottom
-        }
-        if (y2 < CLIP_BOUND) {
-            y2 = CLIP_BOUND; // Bottom
-        }
-        if (y1 > SH - CLIP_BOUND) {
-            y1 = SH - CLIP_BOUND; // Top
-        }
-        if (y2 > SH - CLIP_BOUND) {
-            y2 = SH - CLIP_BOUND; // Top
-        }
+        CLIP(y, SH)
 
         // Surface
         if (sectors[sector].surface == 1) {
             sectors[sector].surfacePoints[x] = y1;
             continue;
-        }
-        if (sectors[sector].surface == 2) {
+        } else if (sectors[sector].surface == 2) {
             sectors[sector].surfacePoints[x] = y2;
             continue;
-        }
-        if (sectors[sector].surface == -1) {
+        } else if (sectors[sector].surface == -1) {
             for (int y = sectors[sector].surfacePoints[x]; y < y1; y++) {
                 pixel(x, y, sectors[sector].colours.bottom);
             }
