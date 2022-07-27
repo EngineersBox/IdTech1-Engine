@@ -87,16 +87,24 @@ void clearBackground() {
 
 void pixel(int x, int y, int c) {
     int rgb[3];
-#define MAP_COLOUR(index, r, g, b) if (c == (index)) { rgb[0] = r; rgb[1] = g; rgb[2] = b; }
-    MAP_COLOUR(0, 255, 255, 0) //Yellow
-    MAP_COLOUR(1, 160, 160, 0) //Yellow darker
-    MAP_COLOUR(2, 0, 255, 0) //Green
-    MAP_COLOUR(3, 0, 160, 0) //Green darker
-    MAP_COLOUR(4, 0, 255, 255) //Cyan
-    MAP_COLOUR(5, 0, 160, 160) //Cyan darker
-    MAP_COLOUR(6, 160, 100, 0) //brown
-    MAP_COLOUR(7, 110, 50, 0) //brown darker
-    MAP_COLOUR(8, 0, 60, 130) //background
+#define MAP_COLOUR(index, r, g, b) case index: \
+    rgb[0] = r; rgb[1] = g; rgb[2] = b; \
+    break;
+
+    switch (c) {
+        MAP_COLOUR(0, 255, 255, 0) //Yellow
+        MAP_COLOUR(1, 160, 160, 0) //Yellow darker
+        MAP_COLOUR(2, 0, 255, 0) //Green
+        MAP_COLOUR(3, 0, 160, 0) //Green darker
+        MAP_COLOUR(4, 0, 255, 255) //Cyan
+        MAP_COLOUR(5, 0, 160, 160) //Cyan darker
+        MAP_COLOUR(6, 160, 100, 0) //brown
+        MAP_COLOUR(7, 110, 50, 0) //brown darker
+        MAP_COLOUR(8, 0, 60, 130) //background
+        default:
+            rgb[0] = 0; rgb[1] = 0; rgb[2] = 0;
+            break;
+    }
 
     glColor3ub(rgb[0],rgb[1],rgb[2]);
     glBegin(GL_POINTS);
@@ -133,8 +141,8 @@ void movePlayer() {
             }
         }
     }
-    int dx = angleLUT.sin[player.angle] * ROTATION_SCALE;
-    int dy = angleLUT.cos[player.angle] * ROTATION_SCALE;
+    int dx = (int) (angleLUT.sin[player.angle] * ROTATION_SCALE);
+    int dy = (int) (angleLUT.cos[player.angle] * ROTATION_SCALE);
     if (keys.w) {
         if (keys.move) {
             player.pos.z -= 4;
