@@ -8,6 +8,7 @@
 
 #include "player/player.h"
 #include "world/wall.h"
+#include "world/sector.h"
 
 #define WINDOW_WIDTH      160                       // Raw screen height
 #define WINDOW_HEIGHT     120                       // Raw screen width
@@ -22,6 +23,8 @@
 #define Z_NEAR            0                         // Near clipping plane distance
 #define Z_FAR             1000                      // Far clipping plane distance
 #define BACKGROUND_COLOUR 0.07f, 0.13f, 0.17f, 1.0f // Clear colour
+#define SECTOR_COUNT 4
+#define WALL_COUNT 16
 
 #define RAW_MOUSE_INPUT
 
@@ -173,7 +176,8 @@ void movePlayer() {
     }
 }
 
-Wall walls[1];
+Wall walls[30];
+Sector sectors[30];
 
 #define FOV 200
 #define LOOK_SCALE 32.0
@@ -195,7 +199,7 @@ void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
     *z1 = *z1 + s * (z2 - (*z1));
 }
 
-void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2) {
+void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2, int colour) {
     int dyb = bottom2 - bottom1; // Y distance bottom
     int dyt = top2 - top1; // Y distance top
     int dx = x2 - x1; // X distance
@@ -237,9 +241,13 @@ void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2) {
         }
 
         for (int y = y1; y < y2; y++) {
-            pixel(x, y, 0);
+            pixel(x, y, colour);
         }
     }
+}
+
+int dist(int x1, int y1, int x2, int y2) {
+    return (int) sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
 void draw() {
@@ -249,64 +257,78 @@ void draw() {
     float CS = angleLUT.cos[player.angle];
     float SN = angleLUT.sin[player.angle];
 
-    int x1 = 40 - player.pos.x;
-    int y1 = 10 - player.pos.y;
-    int x2 = 40 - player.pos.x;
-    int y2 = 290 - player.pos.y;
+    for (int sector = 0; sector < SECTOR_COUNT; sector ++) {
+        sectors[sector].dist = 0;
+        for (int wall = sectors[sector].walls.start; wall < sectors[sector].walls.end; wall++) {
+            int x1 = walls[wall].pos1.x - player.pos.x;
+            int y1 = walls[wall].pos1.y - player.pos.y;
+            int x2 = walls[wall].pos2.x - player.pos.x;
+            int y2 = walls[wall].pos2.y - player.pos.y;
 
-    // World positions
-    wallX[0] = x1 * CS - y1 * SN;
-    wallX[1] = x2 * CS - y2 * SN;
-    wallX[2] = wallX[0];
-    wallX[3] = wallX[1];
+            // World positions
+            wallX[0] = x1 * CS - y1 * SN;
+            wallX[1] = x2 * CS - y2 * SN;
+            wallX[2] = wallX[0];
+            wallX[3] = wallX[1];
 
-    wallY[0] = y1 * CS + x1 * SN;
-    wallY[1] = y2 * CS + x2 * SN;
-    wallY[2] = wallY[0];
-    wallY[3] = wallY[1];
+            wallY[0] = y1 * CS + x1 * SN;
+            wallY[1] = y2 * CS + x2 * SN;
+            wallY[2] = wallY[0];
+            wallY[3] = wallY[1];
 
-    wallZ[0] = 0 - player.pos.z + ((player.look * wallY[0]) / LOOK_SCALE);
-    wallZ[1] = 0 - player.pos.z + ((player.look * wallY[1]) / LOOK_SCALE);
-    wallZ[2] = wallZ[0] + 40;
-    wallZ[3] = wallZ[1] + 40;
+            // Update distance
+            sectors[sector].dist += dist(
+                0, 0,
+                (wallX[0] + wallX[1]) / 2,
+                (wallY[0] + wallY[1]) / 2
+            );
 
-    if (wallY[0] < 1 && wallY[1] < 1) {
-        return;
-    } else if (wallY[0] < 1) {
-        // Bottom
-        clipBehindPlayer(
-            &wallX[0], &wallY[0], &wallZ[0],
-            wallZ[1], wallY[1], wallZ[1]
-        );
-        // Top
-        clipBehindPlayer(
-            &wallX[2], &wallY[2], &wallZ[2],
-            wallZ[3], wallY[3], wallZ[3]
-        );
+            wallZ[0] = sectors[sector].heightBounds.z1 - player.pos.z + ((player.look * wallY[0]) / LOOK_SCALE);
+            wallZ[1] = sectors[sector].heightBounds.z1 - player.pos.z + ((player.look * wallY[1]) / LOOK_SCALE);
+            wallZ[2] = wallZ[0] + sectors[sector].heightBounds.z2;
+            wallZ[3] = wallZ[1] + sectors[sector].heightBounds.z2;
+
+            if (wallY[0] < 1 && wallY[1] < 1) {
+                continue;
+            } else if (wallY[0] < 1) {
+                // Bottom
+                clipBehindPlayer(
+                    &wallX[0], &wallY[0], &wallZ[0],
+                    wallZ[1], wallY[1], wallZ[1]
+                );
+                // Top
+                clipBehindPlayer(
+                    &wallX[2], &wallY[2], &wallZ[2],
+                    wallZ[3], wallY[3], wallZ[3]
+                );
+            }
+            if (wallY[1] < 1) {
+                // Bottom
+                clipBehindPlayer(
+                    &wallX[1], &wallY[1], &wallZ[1],
+                    wallZ[0], wallY[0], wallZ[0]
+                );
+                // Top
+                clipBehindPlayer(
+                    &wallX[3], &wallY[3], &wallZ[3],
+                    wallZ[2], wallY[2], wallZ[2]
+                );
+            }
+
+            // Screen positions
+            wallX[0] = wallX[0] * FOV / wallY[0] + SW2;
+            wallY[0] = wallZ[0] * FOV / wallY[0] + SH2;
+            wallX[1] = wallX[1] * FOV / wallY[1] + SW2;
+            wallY[1] = wallZ[1] * FOV / wallY[1] + SH2;
+            wallX[2] = wallX[2] * FOV / wallY[2] + SW2;
+            wallY[2] = wallZ[2] * FOV / wallY[2] + SH2;
+            wallX[3] = wallX[3] * FOV / wallY[3] + SW2;
+            wallY[3] = wallZ[3] * FOV / wallY[3] + SH2;
+            drawWall(wallX[0], wallX[1], wallY[0], wallY[1], wallY[2], wallY[3], walls[wall].colour);
+        }
+        // Average sector distance
+        sectors[sector].dist /= (sectors[sector].walls.end - sectors[sector].walls.start);
     }
-    if (wallY[1] < 1) {
-        // Bottom
-        clipBehindPlayer(
-            &wallX[1], &wallY[1], &wallZ[1],
-            wallZ[0], wallY[0], wallZ[0]
-        );
-        // Top
-        clipBehindPlayer(
-            &wallX[3], &wallY[3], &wallZ[3],
-            wallZ[2], wallY[2], wallZ[2]
-        );
-    }
-
-    // Screen positions
-    wallX[0] = wallX[0] * FOV / wallY[0] + SW2;
-    wallY[0] = wallZ[0] * FOV / wallY[0] + SH2;
-    wallX[1] = wallX[1] * FOV / wallY[1] + SW2;
-    wallY[1] = wallZ[1] * FOV / wallY[1] + SH2;
-    wallX[2] = wallX[2] * FOV / wallY[2] + SW2;
-    wallY[2] = wallZ[2] * FOV / wallY[2] + SH2;
-    wallX[3] = wallX[3] * FOV / wallY[3] + SW2;
-    wallY[3] = wallZ[3] * FOV / wallY[3] + SH2;
-    drawWall(wallX[0], wallX[1], wallY[0], wallY[1], wallY[2], wallY[3]);
 }
 
 typedef struct FrameCounter {
@@ -333,23 +355,43 @@ void display(GLFWwindow* window) {
     glfwPollEvents();
 }
 
+int loadSectors[] = {
+    // Wall start, wall end, z1 height, z2 height
+    0, 4, 0, 40,
+    4, 8, 0, 40,
+    8, 12, 0, 40,
+    12, 16, 0, 40
+};
+
+int loadWalls[] = {
+    // x1, y1, x2, y2, colour
+    0, 0, 32, 0, 0,
+    32, 0, 32, 32, 1,
+    32, 32, 0, 32, 0,
+    0, 32, 0, 0, 1,
+
+    64, 0, 96, 0, 2,
+    96, 0, 96, 32, 3,
+    96, 32, 64, 32, 2,
+    64, 32, 64, 0, 3,
+
+    64, 64, 96, 64, 4,
+    96, 64, 96, 96, 5,
+    96, 96, 64, 96, 4,
+    64, 96, 64, 64, 5,
+
+    0, 64, 32, 64, 6,
+    32, 64, 32, 96, 7,
+    32, 96, 0, 96, 6,
+    0, 96, 0, 64, 7
+};
+
 void init() {
     // Pre-calculate sin/cos to reduce overhead
     for (int a = 0; a < 360; a++) {
          angleLUT.sin[a] = sin(a / 180.0 * M_PI);
          angleLUT.cos[a] = cos(a / 180.0 * M_PI);
     }
-    walls[0] = (Wall) {
-        .pos1 = {
-            .x = 50,
-            .y = 0
-        },
-        .pos2 = {
-            .x = 0,
-            .y = 10
-        },
-        .colour = 0
-    };
     player = (Player) {
         .pos = {
             .x = 70,
@@ -359,6 +401,23 @@ void init() {
         .angle = 0,
         .look = 0
     };
+    int v1 = 0;
+    int v2 = 0;
+    for (int sector = 0; sector < SECTOR_COUNT; sector++) {
+        sectors[sector].walls.start = loadSectors[v1 + 0];
+        sectors[sector].walls.end = loadSectors[v1 + 1];
+        sectors[sector].heightBounds.z1 = loadSectors[v1 + 2];
+        sectors[sector].heightBounds.z2 = loadSectors[v1 + 3] - loadSectors[v1 + 2];
+        v1 += 4;
+        for (int wall = sectors[sector].walls.start; wall < sectors[sector].walls.end; wall++) {
+            walls[wall].pos1.x = loadWalls[v2 + 0];
+            walls[wall].pos1.y = loadWalls[v2 + 1];
+            walls[wall].pos2.x = loadWalls[v2 + 2];
+            walls[wall].pos2.y = loadWalls[v2 + 3];
+            walls[wall].colour = loadWalls[v2 + 4];
+            v2 += 5;
+        }
+    }
 }
 
 int main(int argc, char* argv[]) {
