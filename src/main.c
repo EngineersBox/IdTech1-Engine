@@ -1,25 +1,29 @@
+#define _USE_MATH_DEFINES
 #include <stdlib.h>
-#include <stdio.h>
+#include <math.h>
 #include <stdbool.h>
 
 #include <glad/glad.h>
 #include <GLFW/glfw3.h>
 
 #include "player/player.h"
+#include "world/wall.h"
 
 #define WINDOW_WIDTH      160                       // Raw screen height
 #define WINDOW_HEIGHT     120                       // Raw screen width
-#define res               1                         // 0=160x120 1=360x240 4=640x480
-#define SW                WINDOW_WIDTH*res          // screen width
-#define SH                WINDOW_HEIGHT*res         // screen height
+#define RESOLUTION        1                         // 0=160x120 1=360x240 4=640x480
+#define SW                WINDOW_WIDTH*RESOLUTION   // screen width
+#define SH                WINDOW_HEIGHT*RESOLUTION  // screen height
 #define SW2               (SW/2)                    // half of screen width
 #define SH2               (SH/2)                    // half of screen height
-#define pixelScale        4/res                     // OpenGL pixel scale
-#define GLSW              (SW*pixelScale)           // OpenGL window width
-#define GLSH              (SH*pixelScale)           // OpenGL window height
+#define PIXEL_SCALE       4/RESOLUTION              // OpenGL pixel scale
+#define GLSW              (SW*PIXEL_SCALE)          // OpenGL window width
+#define GLSH              (SH*PIXEL_SCALE)          // OpenGL window height
 #define Z_NEAR            0                         // Near clipping plane distance
 #define Z_FAR             1000                      // Far clipping plane distance
 #define BACKGROUND_COLOUR 0.07f, 0.13f, 0.17f, 1.0f // Clear colour
+
+#define RAW_MOUSE_INPUT
 
 typedef struct Keys {
     int w, a, s, d;
@@ -28,9 +32,12 @@ typedef struct Keys {
 } Keys;
 Keys keys;
 
+Player player;
+
 void keyCallback(GLFWwindow* window, int key, int scanCode, int action, int modifiers) {
     #define SET_ACTION_MAPPING(field, keyCode) case keyCode: \
-        keys.field = action == GLFW_PRESS; \
+        if (action == GLFW_PRESS) { keys.field = 1;}  \
+        else if (action == GLFW_RELEASE) { keys.field = 0; } \
         break;
 
     switch (key) {
@@ -72,12 +79,18 @@ GLFWwindow* initGL(const int width, const int height, const char* title) {
     }
 
     glfwSetKeyCallback(window, keyCallback);
+//    if (glfwRawMouseMotionSupported() == GLFW_TRUE) {
+//        glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+//#ifdef RAW_MOUSE_INPUT
+//        glfwSetInputMode(window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+//#endif
+//    }
 
     glfwMakeContextCurrent(window);
     gladLoadGL();
     glViewport(0, 0, width, height);
     glOrtho(0, width, 0, height, Z_NEAR, Z_FAR);
-    glPointSize(pixelScale);
+    glPointSize(PIXEL_SCALE);
     return window;
 }
 
@@ -86,11 +99,6 @@ void clearBackground() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void movePlayer() {
-
-}
-
-// Draw a pixel at x/y with rgb
 void pixel(int x, int y, int c) {
     int rgb[3];
     if(c==0){ rgb[0]=255; rgb[1]=255; rgb[2]=  0;} //Yellow
@@ -104,28 +112,201 @@ void pixel(int x, int y, int c) {
     if(c==8){ rgb[0]=  0; rgb[1]= 60; rgb[2]=130;} //background
     glColor3ub(rgb[0],rgb[1],rgb[2]);
     glBegin(GL_POINTS);
-    glVertex2i(x * pixelScale + 2, y * pixelScale + 2);
+    glVertex2i(x * PIXEL_SCALE + 2, y * PIXEL_SCALE + 2);
     glEnd();
 }
 
-int tick;
-void draw() {
-    int c = 0;
-    for (int y = 0; y < SH2; y++) {
-        for (int x = 0; x < SW2; x++) {
-            pixel(x,y,c);
-            c++;
-            if (c > 8) {
-                c = 0;
+typedef struct AngleLUT {
+    float sin[360];
+    float cos[360];
+} AngleLUT;
+AngleLUT angleLUT;
+
+#define ROTATION_SCALE 10.0
+
+void movePlayer() {
+    if (keys.a) {
+        if (keys.move) {
+            player.look--;
+        } else {
+            player.angle -= 4;
+            if (player.angle < 0) {
+                player.angle += 360;
             }
         }
     }
-    //frame rate
-    tick++;
-    if (tick > 20) {
-        tick = 0;
+    if (keys.d) {
+        if (keys.move) {
+            player.look++;
+        } else {
+            player.angle += 4;
+            if (player.angle > 359) {
+                player.angle -= 360;
+            }
+        }
     }
-    pixel(SW2, SH2 + tick, 0);
+    int dx = angleLUT.sin[player.angle] * ROTATION_SCALE;
+    int dy = angleLUT.cos[player.angle] * ROTATION_SCALE;
+    if (keys.w) {
+        if (keys.move) {
+            player.pos.z -= 4;
+        } else {
+            player.pos.x += dx;
+            player.pos.y += dy;
+        }
+    }
+    if (keys.s) {
+        if (keys.move) {
+            player.pos.z += 4;
+        } else {
+            player.pos.x -= dx;
+            player.pos.y -= dy;
+        }
+    }
+    if (keys.strafeRight) {
+        player.pos.x += dy;
+        player.pos.y -= dx;
+    }
+    if (keys.strafeLeft) {
+        player.pos.x -= dy;
+        player.pos.y += dx;
+    }
+}
+
+Wall walls[1];
+
+#define FOV 200
+#define LOOK_SCALE 32.0
+#define CLIP_BOUND 1
+
+void clipBehindPlayer(int* x1, int* y1, int* z1, int x2, int y2, int z2) {
+    float da = *y1;
+    float db = y2;
+    float d = da - db;
+    if (d == 0) {
+        d = 1;
+    }
+    float s = da / (da - db);
+    *x1 = *x1 + s * (x2 - (*x1));
+    *y1 = *y1 + s * (y2 - (*y1));
+    if (*y1 == 0) {
+        *y1 = 1;
+    }
+    *z1 = *z1 + s * (z2 - (*z1));
+}
+
+void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2) {
+    int dyb = bottom2 - bottom1; // Y distance bottom
+    int dyt = top2 - top1; // Y distance top
+    int dx = x2 - x1; // X distance
+    if (dx == 0) {
+        dx = 1;
+    }
+    int xs = x1;
+
+    // Clip x
+    if (x1 < CLIP_BOUND) {
+        x1 = CLIP_BOUND; // Left
+    }
+    if (x2 < CLIP_BOUND) {
+        x2 = CLIP_BOUND; // Left
+    }
+    if (x1 > SW - CLIP_BOUND) {
+        x1 = SW - CLIP_BOUND; // Right
+    }
+    if (x2 > SW - CLIP_BOUND) {
+        x2 = SW - CLIP_BOUND; // Right
+    }
+
+    for (int x = x1; x < x2; x++) {
+        int y1 = dyb * (x - xs + 0.5) / dx + bottom1;
+        int y2 = dyt * (x - xs + 0.5) / dx + top1;
+
+        // Clip y
+        if (y1 < CLIP_BOUND) {
+            y1 = CLIP_BOUND; // Bottom
+        }
+        if (y2 < CLIP_BOUND) {
+            y2 = CLIP_BOUND; // Bottom
+        }
+        if (y1 > SH - CLIP_BOUND) {
+            y1 = SH - CLIP_BOUND; // Top
+        }
+        if (y2 > SH - CLIP_BOUND) {
+            y2 = SH - CLIP_BOUND; // Top
+        }
+
+        for (int y = y1; y < y2; y++) {
+            pixel(x, y, 0);
+        }
+    }
+}
+
+void draw() {
+    int wallX[4];
+    int wallY[4];
+    int wallZ[4];
+    float CS = angleLUT.cos[player.angle];
+    float SN = angleLUT.sin[player.angle];
+
+    int x1 = 40 - player.pos.x;
+    int y1 = 10 - player.pos.y;
+    int x2 = 40 - player.pos.x;
+    int y2 = 290 - player.pos.y;
+
+    // World positions
+    wallX[0] = x1 * CS - y1 * SN;
+    wallX[1] = x2 * CS - y2 * SN;
+    wallX[2] = wallX[0];
+    wallX[3] = wallX[1];
+
+    wallY[0] = y1 * CS + x1 * SN;
+    wallY[1] = y2 * CS + x2 * SN;
+    wallY[2] = wallY[0];
+    wallY[3] = wallY[1];
+
+    wallZ[0] = 0 - player.pos.z + ((player.look * wallY[0]) / LOOK_SCALE);
+    wallZ[1] = 0 - player.pos.z + ((player.look * wallY[1]) / LOOK_SCALE);
+    wallZ[2] = wallZ[0] + 40;
+    wallZ[3] = wallZ[1] + 40;
+
+    if (wallY[0] < 1 && wallY[1] < 1) {
+        return;
+    } else if (wallY[0] < 1) {
+        // Bottom
+        clipBehindPlayer(
+            &wallX[0], &wallY[0], &wallZ[0],
+            wallZ[1], wallY[1], wallZ[1]
+        );
+        // Top
+        clipBehindPlayer(
+            &wallX[2], &wallY[2], &wallZ[2],
+            wallZ[3], wallY[3], wallZ[3]
+        );
+    }
+    if (wallY[1] < 1) {
+        // Bottom
+        clipBehindPlayer(
+            &wallX[1], &wallY[1], &wallZ[1],
+            wallZ[0], wallY[0], wallZ[0]
+        );
+        // Top
+        clipBehindPlayer(
+            &wallX[3], &wallY[3], &wallZ[3],
+            wallZ[2], wallY[2], wallZ[2]
+        );
+    }
+
+    // Screen positions
+    wallX[0] = wallX[0] * FOV / wallY[0] + SW2;
+    wallY[0] = wallZ[0] * FOV / wallY[0] + SH2;
+    wallX[1] = wallX[1] * FOV / wallY[1] + SW2;
+    wallY[1] = wallZ[1] * FOV / wallY[1] + SH2;
+    wallX[2] = wallX[2] * FOV / wallY[2] + SW2;
+    wallY[2] = wallZ[2] * FOV / wallY[2] + SH2;
+    wallX[3] = wallX[3] * FOV / wallY[3] + SW2;
+    wallY[3] = wallZ[3] * FOV / wallY[3] + SH2;
+    drawWall(wallX[0], wallX[1], wallY[0], wallY[1], wallY[2], wallY[3]);
 }
 
 typedef struct FrameCounter {
@@ -134,6 +315,7 @@ typedef struct FrameCounter {
 } FrameCounter;
 FrameCounter frameCounter;
 
+// Wait = 1000ms / n fps
 #define FRAME_WAIT 50
 
 void display(GLFWwindow* window) {
@@ -151,18 +333,37 @@ void display(GLFWwindow* window) {
     glfwPollEvents();
 }
 
-int main(int argc, char* argv[]) {
-    GLFWwindow* window = initGL(GLSW, GLSH, "DOOM");
-
-    Player player = {
+void init() {
+    // Pre-calculate sin/cos to reduce overhead
+    for (int a = 0; a < 360; a++) {
+         angleLUT.sin[a] = sin(a / 180.0 * M_PI);
+         angleLUT.cos[a] = cos(a / 180.0 * M_PI);
+    }
+    walls[0] = (Wall) {
+        .pos1 = {
+            .x = 50,
+            .y = 0
+        },
+        .pos2 = {
+            .x = 0,
+            .y = 10
+        },
+        .colour = 0
+    };
+    player = (Player) {
         .pos = {
             .x = 70,
-            .y = 0,
-            .z = -70
+            .y = -110,
+            .z = 20
         },
         .angle = 0,
         .look = 0
     };
+}
+
+int main(int argc, char* argv[]) {
+    GLFWwindow* window = initGL(GLSW, GLSH, "DOOM");
+    init();
 
     while (!glfwWindowShouldClose(window)) {
         display(window);
