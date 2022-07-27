@@ -257,7 +257,17 @@ void draw() {
     float CS = angleLUT.cos[player.angle];
     float SN = angleLUT.sin[player.angle];
 
-    for (int sector = 0; sector < SECTOR_COUNT; sector ++) {
+    for (int sector = 0; sector < SECTOR_COUNT; sector++) {
+        for (int wall = 0; wall < SECTOR_COUNT - sector - 1; wall++) {
+            if (sectors[wall].dist < sectors[wall + 1].dist) {
+                Sector st = sectors[wall];
+                sectors[wall] = sectors[wall + 1];
+                sectors[wall + 1] = st;
+            }
+        }
+    }
+
+    for (int sector = 0; sector < SECTOR_COUNT; sector++) {
         sectors[sector].dist = 0;
         for (int wall = sectors[sector].walls.start; wall < sectors[sector].walls.end; wall++) {
             int x1 = walls[wall].pos1.x - player.pos.x;
