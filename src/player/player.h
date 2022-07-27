@@ -1,6 +1,5 @@
 #pragma once
 
-
 #ifndef ID_TECH_1_DOOM_PLAYER_H
 #define ID_TECH_1_DOOM_PLAYER_H
 
@@ -9,7 +8,7 @@ extern "C" {
 #endif
 
 typedef struct Player {
-    union {
+    struct {
         int x;
         int y;
         int z;

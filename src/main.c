@@ -72,18 +72,57 @@ GLFWwindow* initGL(const int width, const int height, const char* title) {
     return window;
 }
 
-void display() {
+void clearBackground() {
     glClearColor(BACKGROUND_COLOUR);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+}
+
+void movePlayer() {
+
+}
+
+void draw() {
+
+}
+
+typedef struct FrameCounter {
+    double frame1;
+    double frame2;
+} FrameCounter;
+FrameCounter frameCounter;
+
+#define FRAME_WAIT 50
+
+void display(GLFWwindow* window) {
+    if ((frameCounter.frame1 - frameCounter.frame2) >= FRAME_WAIT) {
+        clearBackground();
+        movePlayer();
+        draw();
+
+        frameCounter.frame2 = frameCounter.frame1;
+        glfwSwapBuffers(window);
+        glfwSetWindowSize(window, WINDOW_WIDTH, WINDOW_HEIGHT);
+    }
+
+    frameCounter.frame1 = glfwGetTime() * 1000;
+    glfwPollEvents();
 }
 
 int main(int argc, char* argv[]) {
     GLFWwindow* window = initGL(WINDOW_WIDTH, WINDOW_HEIGHT, "DOOM");
 
+    Player player = {
+        .pos = {
+            .x = 70,
+            .y = 0,
+            .z = -70
+        },
+        .angle = 0,
+        .look = 0
+    };
+
     while (!glfwWindowShouldClose(window)) {
-        display();
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+        display(window);
     }
 
     glfwDestroyWindow(window);
