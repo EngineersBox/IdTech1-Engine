@@ -17,10 +17,10 @@
 #define Z_NEAR            0                         // Near clipping plane distance
 #define Z_FAR             1000                      // Far clipping plane distance
 #define BACKGROUND_COLOUR 0.07f, 0.13f, 0.17f, 1.0f // Clear colour
-#define FOV 200                                     // FOV scaling, 200 ~ 90deg
-#define LOOK_SCALE 32.0                             // Near-far distance scaling
-#define SECTOR_COUNT 4                              // Sectors to load
-#define WALL_COUNT 16                               // Walls to load (multiple of SECTOR_COUNT)
+#define FOV               200                       // FOV scaling, 200 ~ 90deg
+#define LOOK_SCALE        32.0                      // Near-far distance scaling
+#define SECTOR_COUNT      10                        // Sectors to load
+#define WALL_COUNT        52                        // Walls to load (multiple of SECTOR_COUNT)
 
 #define RAW_MOUSE_INPUT
 
