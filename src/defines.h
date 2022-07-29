@@ -6,7 +6,7 @@
 
 #define WINDOW_WIDTH      160                       // Raw screen height
 #define WINDOW_HEIGHT     120                       // Raw screen width
-#define RESOLUTION        1                         // 0=160x120 1=360x240 4=640x480
+#define RESOLUTION        2                         // 0=160x120 1=360x240 4=640x480
 #define SW                WINDOW_WIDTH*RESOLUTION   // screen width
 #define SH                WINDOW_HEIGHT*RESOLUTION  // screen height
 #define SW2               (SW/2)                    // half of screen width

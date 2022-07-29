@@ -234,8 +234,7 @@ void drawWall(int x1, int x2, int bottom1, int bottom2, int top1, int top2, int 
             for (int y = sectors[sector].surfacePoints[x]; y < y1; y++) {
                 pixel(x, y, sectors[sector].colours.bottom);
             }
-        }
-        if (sectors[sector].surface == -2) {
+        } else if (sectors[sector].surface == -2) {
             for (int y = y2; y < sectors[sector].surfacePoints[x]; y++) {
                 pixel(x, y, sectors[sector].colours.top);
             }
@@ -251,6 +250,10 @@ int dist(int x1, int y1, int x2, int y2) {
     return (int) sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
 }
 
+int compareDist(Sector* s1, Sector* s2) {
+    return s1->dist < s2->dist;
+}
+
 void draw() {
     int wallX[4];
     int wallY[4];
@@ -258,15 +261,7 @@ void draw() {
     float CS = angleLUT.cos[player.angle];
     float SN = angleLUT.sin[player.angle];
 
-    for (int sector = 0; sector < SECTOR_COUNT; sector++) {
-        for (int wall = 0; wall < SECTOR_COUNT - sector - 1; wall++) {
-            if (sectors[wall].dist < sectors[wall + 1].dist) {
-                Sector st = sectors[wall];
-                sectors[wall] = sectors[wall + 1];
-                sectors[wall + 1] = st;
-            }
-        }
-    }
+    qsort(sectors, SECTOR_COUNT, sizeof(Sector), (int (*)(const void *, const void *)) compareDist);
 
     for (int sector = 0; sector < SECTOR_COUNT; sector++) {
         sectors[sector].dist = 0;
@@ -344,20 +339,20 @@ void draw() {
                         wallX[2], wallY[2], wallZ[2]
                     );
                 }
+                #define CALCULATE_SCREEN_POSITION(index) \
+                    wallX[index] = wallX[index] * FOV / wallY[index] + SW2; \
+                    wallY[index] = wallZ[index] * FOV / wallY[index] + SH2;
 
-                // Screen positions
-                wallX[0] = wallX[0] * FOV / wallY[0] + SW2;
-                wallY[0] = wallZ[0] * FOV / wallY[0] + SH2;
-
-                wallX[1] = wallX[1] * FOV / wallY[1] + SW2;
-                wallY[1] = wallZ[1] * FOV / wallY[1] + SH2;
-
-                wallX[2] = wallX[2] * FOV / wallY[2] + SW2;
-                wallY[2] = wallZ[2] * FOV / wallY[2] + SH2;
-
-                wallX[3] = wallX[3] * FOV / wallY[3] + SW2;
-                wallY[3] = wallZ[3] * FOV / wallY[3] + SH2;
-                drawWall(wallX[0], wallX[1], wallY[0], wallY[1], wallY[2], wallY[3], walls[wall].colour, sector);
+                CALCULATE_SCREEN_POSITION(0)
+                CALCULATE_SCREEN_POSITION(1)
+                CALCULATE_SCREEN_POSITION(2)
+                CALCULATE_SCREEN_POSITION(3)
+                drawWall(
+                    wallX[0], wallX[1],
+                    wallY[0], wallY[1], wallY[2], wallY[3],
+                    walls[wall].colour,
+                    sector
+                );
             }
             // Average sector distance
             sectors[sector].dist /= (sectors[sector].walls.end - sectors[sector].walls.start);
