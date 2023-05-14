@@ -87,9 +87,7 @@ void clearBackground() {
 
 void pixel(int x, int y, int c) {
     int rgb[3];
-#define MAP_COLOUR(index, r, g, b) case index: \
-    rgb[0] = r; rgb[1] = g; rgb[2] = b; \
-    break;
+#define MAP_COLOUR(index, r, g, b) case index: rgb[0] = r; rgb[1] = g; rgb[2] = b; break;
 
     switch (c) {
         MAP_COLOUR(0, 255, 255, 0) //Yellow
